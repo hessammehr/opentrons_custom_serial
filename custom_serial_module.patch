@@ -1,0 +1,276 @@
+diff -ruN opentrons-baseline/opentrons/hardware_control/modules/__init__.py opentrons-modified/opentrons/hardware_control/modules/__init__.py
+--- opentrons-baseline/opentrons/hardware_control/modules/__init__.py	2025-06-21 11:03:02
++++ opentrons-modified/opentrons/hardware_control/modules/__init__.py	2025-06-21 11:40:56
+@@ -5,6 +5,7 @@
+ from .heater_shaker import HeaterShaker
+ from .absorbance_reader import AbsorbanceReader
+ from .flex_stacker import FlexStacker
++from ot_custom_serial_module.module import CustomSerialModule
+ from .update import update_firmware
+ from .utils import MODULE_TYPE_BY_NAME, build
+ from .types import (
+@@ -66,4 +67,5 @@
+     "FlexStackerStatus",
+     "PlatformState",
+     "StackerAxisState",
++    "CustomSerialModule",
+ ]
+diff -ruN opentrons-baseline/opentrons/hardware_control/modules/types.py opentrons-modified/opentrons/hardware_control/modules/types.py
+--- opentrons-baseline/opentrons/hardware_control/modules/types.py	2025-06-21 11:03:02
++++ opentrons-modified/opentrons/hardware_control/modules/types.py	2025-06-21 11:07:52
+@@ -34,6 +34,7 @@
+         MagneticBlockType,
+         AbsorbanceReaderType,
+         FlexStackerModuleType,
++        CustomSerialModuleType,
+     )
+ 
+ 
+@@ -174,6 +175,7 @@
+     MAGNETIC_BLOCK: MagneticBlockType = "magneticBlockType"
+     ABSORBANCE_READER: AbsorbanceReaderType = "absorbanceReaderType"
+     FLEX_STACKER: FlexStackerModuleType = "flexStackerModuleType"
++    CUSTOM_SERIAL: CustomSerialModuleType = "customSerialModuleType"
+ 
+     @classmethod
+     def from_model(cls, model: ModuleModel) -> ModuleType:
+@@ -191,6 +193,8 @@
+             return cls.ABSORBANCE_READER
+         if isinstance(model, FlexStackerModuleModel):
+             return cls.FLEX_STACKER
++        if isinstance(model, CustomSerialModuleModel):
++            return cls.CUSTOM_SERIAL
+ 
+     @classmethod
+     def to_module_fixture_id(cls, module_type: ModuleType) -> str:
+@@ -244,6 +248,10 @@
+     FLEX_STACKER_V1: str = "flexStackerModuleV1"
+ 
+ 
++class CustomSerialModuleModel(str, Enum):
++    CUSTOM_SERIAL_V1: str = "customSerialModuleV1"
++
++
+ def module_model_from_string(model_string: str) -> ModuleModel:
+     for model_enum in {
+         MagneticModuleModel,
+@@ -253,6 +261,7 @@
+         MagneticBlockModel,
+         AbsorbanceReaderModel,
+         FlexStackerModuleModel,
++        CustomSerialModuleModel,
+     }:
+         try:
+             return cast(ModuleModel, model_enum(model_string))
+@@ -306,6 +315,7 @@
+     MagneticBlockModel,
+     AbsorbanceReaderModel,
+     FlexStackerModuleModel,
++    CustomSerialModuleModel,
+ ]
+ 
+ 
+diff -ruN opentrons-baseline/opentrons/hardware_control/modules/utils.py opentrons-modified/opentrons/hardware_control/modules/utils.py
+--- opentrons-baseline/opentrons/hardware_control/modules/utils.py	2025-06-21 11:03:02
++++ opentrons-modified/opentrons/hardware_control/modules/utils.py	2025-06-21 11:40:47
+@@ -14,6 +14,7 @@
+ from .heater_shaker import HeaterShaker
+ from .absorbance_reader import AbsorbanceReader
+ from .flex_stacker import FlexStacker
++from ot_custom_serial_module.module import CustomSerialModule
+ 
+ 
+ log = logging.getLogger(__name__)
+@@ -28,6 +29,7 @@
+     HeaterShaker.name(): HeaterShaker.MODULE_TYPE,
+     AbsorbanceReader.name(): AbsorbanceReader.MODULE_TYPE,
+     FlexStacker.name(): FlexStacker.MODULE_TYPE,
++    CustomSerialModule.name(): CustomSerialModule.MODULE_TYPE,
+ }
+ 
+ _MODULE_CLS_BY_TYPE: Dict[ModuleType, Type[AbstractModule]] = {
+@@ -37,6 +39,7 @@
+     HeaterShaker.MODULE_TYPE: HeaterShaker,
+     AbsorbanceReader.MODULE_TYPE: AbsorbanceReader,
+     FlexStacker.MODULE_TYPE: FlexStacker,
++    CustomSerialModule.MODULE_TYPE: CustomSerialModule,
+ }
+ 
+ 
+diff -ruN opentrons-baseline/opentrons/protocol_api/validation.py opentrons-modified/opentrons/protocol_api/validation.py
+--- opentrons-baseline/opentrons/protocol_api/validation.py	2025-06-21 11:03:02
++++ opentrons-modified/opentrons/protocol_api/validation.py	2025-06-21 11:28:55
+@@ -42,6 +42,7 @@
+     MagneticBlockModel,
+     AbsorbanceReaderModel,
+     FlexStackerModuleModel,
++    CustomSerialModuleModel,
+ )
+ 
+ from .disposal_locations import TrashBin, WasteChute
+@@ -381,6 +382,7 @@
+     "thermocycler module": ThermocyclerModuleModel.THERMOCYCLER_V1,
+     "thermocycler module gen2": ThermocyclerModuleModel.THERMOCYCLER_V2,
+     # No alias for heater-shaker. Use heater-shaker model name for loading.
++    "custom serial module": CustomSerialModuleModel.CUSTOM_SERIAL_V1,
+ }
+ 
+ _MODULE_MODELS: Dict[str, ModuleModel] = {
+@@ -394,6 +396,7 @@
+     "magneticBlockV1": MagneticBlockModel.MAGNETIC_BLOCK_V1,
+     "absorbanceReaderV1": AbsorbanceReaderModel.ABSORBANCE_READER_V1,
+     "flexStackerModuleV1": FlexStackerModuleModel.FLEX_STACKER_V1,
++    "customSerialModuleV1": CustomSerialModuleModel.CUSTOM_SERIAL_V1,
+ }
+ 
+ 
+diff -ruN opentrons-baseline/opentrons_shared_data/data/module/definitions/3/customSerialModuleV1.json opentrons-modified/opentrons_shared_data/data/module/definitions/3/customSerialModuleV1.json
+--- opentrons-baseline/opentrons_shared_data/data/module/definitions/3/customSerialModuleV1.json	1970-01-01 01:00:00
++++ opentrons-modified/opentrons_shared_data/data/module/definitions/3/customSerialModuleV1.json	2025-06-21 11:29:36
+@@ -0,0 +1,110 @@
++{
++  "$otSharedSchema": "module/schemas/3",
++  "moduleType": "customSerialModuleType",
++  "model": "customSerialModuleV1",
++  "labwareOffset": {
++    "x": 0,
++    "y": 0,
++    "z": 0
++  },
++  "dimensions": {
++    "bareOverallHeight": 10,
++    "overLabwareHeight": 0,
++    "xDimension": 100,
++    "yDimension": 100,
++    "footprintXDimension": 100,
++    "footprintYDimension": 100,
++    "labwareInterfaceXDimension": 100,
++    "labwareInterfaceYDimension": 100
++  },
++  "cornerOffsetFromSlot": {
++    "x": 0,
++    "y": 0,
++    "z": 0
++  },
++  "calibrationPoint": {
++    "x": 50.0,
++    "y": 50.0,
++    "z": 0
++  },
++  "config": {},
++  "gripperOffsets": {
++    "default": {
++      "pickUpOffset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      },
++      "dropOffset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      }
++    }
++  },
++  "displayName": "Custom Serial Module",
++  "quirks": [],
++  "slotTransforms": {
++    "ot3_standard": {
++      "D1": {
++        "labwareOffset": [
++          [1, 0, 0, 0],
++          [0, 1, 0, 0],
++          [0, 0, 1, 0],
++          [0, 0, 0, 1]
++        ]
++      },
++      "C1": {
++        "labwareOffset": [
++          [1, 0, 0, 0],
++          [0, 1, 0, 0],
++          [0, 0, 1, 0],
++          [0, 0, 0, 1]
++        ]
++      },
++      "B1": {
++        "labwareOffset": [
++          [1, 0, 0, 0],
++          [0, 1, 0, 0],
++          [0, 0, 1, 0],
++          [0, 0, 0, 1]
++        ]
++      },
++      "A1": {
++        "labwareOffset": [
++          [1, 0, 0, 0],
++          [0, 1, 0, 0],
++          [0, 0, 1, 0],
++          [0, 0, 0, 1]
++        ]
++      }
++    }
++  },
++  "compatibleWith": [],
++  "incompatibleWithDecks": [],
++  "twoDimensionalRendering": {
++    "name": "svg",
++    "type": "element",
++    "value": "",
++    "attributes": {
++      "viewBox": "0 0 100 100"
++    },
++    "children": [
++      {
++        "name": "rect",
++        "type": "element",
++        "value": "",
++        "attributes": {
++          "x": "10",
++          "y": "10", 
++          "width": "80",
++          "height": "80",
++          "fill": "#E6E6E6",
++          "stroke": "#333",
++          "stroke-width": "2"
++        },
++        "children": []
++      }
++    ]
++  }
++}
+\ No newline at end of file
+diff -ruN opentrons-baseline/opentrons_shared_data/module/types.py opentrons-modified/opentrons_shared_data/module/types.py
+--- opentrons-baseline/opentrons_shared_data/module/types.py	2025-06-21 11:03:02
++++ opentrons-modified/opentrons_shared_data/module/types.py	2025-06-21 11:04:29
+@@ -20,6 +20,7 @@
+ MagneticBlockType = Literal["magneticBlockType"]
+ AbsorbanceReaderType = Literal["absorbanceReaderType"]
+ FlexStackerModuleType = Literal["flexStackerModuleType"]
++CustomSerialModuleType = Literal["customSerialModuleType"]
+ 
+ ModuleType = Union[
+     MagneticModuleType,
+@@ -29,6 +30,7 @@
+     MagneticBlockType,
+     AbsorbanceReaderType,
+     FlexStackerModuleType,
++    CustomSerialModuleType,
+ ]
+ 
+ MagneticModuleModel = Literal["magneticModuleV1", "magneticModuleV2"]
+@@ -38,6 +40,7 @@
+ MagneticBlockModel = Literal["magneticBlockV1"]
+ AbsorbanceReaderModel = Literal["absorbanceReaderV1"]
+ FlexStackerModuleModel = Literal["flexStackerModuleV1"]
++CustomSerialModuleModel = Literal["customSerialModuleV1"]
+ 
+ ModuleModel = Union[
+     MagneticModuleModel,
+@@ -47,6 +50,7 @@
+     MagneticBlockModel,
+     AbsorbanceReaderModel,
+     FlexStackerModuleModel,
++    CustomSerialModuleModel,
+ ]
+ 
+ ModuleSlotTransform = TypedDict(
