@@ -6,6 +6,12 @@
 
 After SSH investigation of an OpenTrons Flex at `<FLEX_IP>`, here's how modules actually work:
 
+**Note**: Connection details are stored in `.env` file (not committed to git):
+```
+FLEX_IP=<your_flex_ip>
+FLEX_USERNAME=<your_username>
+```
+
 #### Key Findings
 
 1. **Module definitions are in JSON files** at `/opt/opentrons-robot-server/opentrons_shared_data/data/module/definitions/3/`
@@ -212,7 +218,7 @@ This is the **complete integration path** - no more, no less.
 
 ### Quick Installation
 ```bash
-# On OpenTrons Flex (as <USERNAME>)
+# On OpenTrons Flex (as $FLEX_USERNAME)
 # 1. Install our Python package
 pip install -e /path/to/ot_module
 
@@ -226,11 +232,11 @@ systemctl restart opentrons-robot-server
 
 ### Automated Installation
 ```bash
-# Copy files to Flex
-scp -r ot_module/ install.sh custom_serial_module.patch <USERNAME>@<FLEX_IP>:~/
+# Copy files to Flex (use values from .env file)
+scp -r ot_module/ install.sh custom_serial_module.patch $FLEX_USERNAME@$FLEX_IP:~/
 
 # Run installer
-ssh <USERNAME>@<FLEX_IP> "./install.sh"
+ssh $FLEX_USERNAME@$FLEX_IP "./install.sh"
 ```
 
 ### Rollback
@@ -289,8 +295,11 @@ def run(protocol):
 
 **1. Extract baseline OpenTrons files from target Flex system:**
 ```bash
+# Load connection details from .env file
+source .env
+
 # SSH to OpenTrons Flex and extract relevant files
-ssh <USERNAME>@<FLEX_IP> "cd /opt/opentrons-robot-server && tar czf opentrons_baseline.tar.gz \
+ssh $FLEX_USERNAME@$FLEX_IP "cd /opt/opentrons-robot-server && tar czf opentrons_baseline.tar.gz \
   opentrons/hardware_control/modules/__init__.py \
   opentrons/hardware_control/modules/types.py \
   opentrons/hardware_control/modules/utils.py \
@@ -303,7 +312,7 @@ ssh <USERNAME>@<FLEX_IP> "cd /opt/opentrons-robot-server && tar czf opentrons_ba
   opentrons_shared_data/data/module/definitions/3/"
 
 # Copy to local machine
-scp <USERNAME>@<FLEX_IP>:opentrons_baseline.tar.gz .
+scp $FLEX_USERNAME@$FLEX_IP:opentrons_baseline.tar.gz .
 ```
 
 **2. Set up patch workspace:**
